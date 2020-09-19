@@ -1,18 +1,10 @@
 package com.example.venkateshwaran.nittmap;
 
 import android.app.ProgressDialog;
-import android.content.Context;
-import android.content.Intent;
 import android.graphics.Color;
-import android.location.Address;
-import android.location.Criteria;
-import android.location.Geocoder;
 import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Handler;
-import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -21,34 +13,22 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.WindowManager;
-import android.webkit.WebSettings;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -63,24 +43,69 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 
 public class MapsActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
+
     private GoogleMap mMap;
-    float suml=0,sumr=0;
-    double latn,lonn;
-    String name;
+    public ArrayList<String> cat = new ArrayList<String>(100);
+    public ArrayList<Float> lat = new ArrayList<Float>(100);
+    public ArrayList<Float> lon = new ArrayList<Float>(100);
+
     GoogleApiClient mGoogleApiClient;
     Polyline line;
-    int t=0;
+    float latitudeSum = 0, longitudeSum = 0;
+    double currentLocationLatitude, currentLocationLongitude;
+    boolean isDirectionLinePresent = false;
 
-    public ArrayList<String> cat = new ArrayList<String>(100) ;
-    public ArrayList<Float> lat = new ArrayList<>(100);
-    public ArrayList<Float>  lon = new ArrayList<Float>(100) ;
+    JSONObject getLocation(String locationName, double latitude, double longitude) throws JSONException {
+        JSONObject location = new JSONObject();
+        location.put("name", locationName);
+        location.put("latitude", latitude);
+        location.put("longitude", longitude);
+
+        return location;
+    }
+
+    public JSONObject getCategoryMap() throws JSONException {
+
+        JSONArray messes = new JSONArray();
+        messes.put(getLocation("Mega Mess 1", 10.766062, 78.815327));
+        messes.put(getLocation("Mega Mess 2", 10.764668, 78.812444));
+
+        JSONArray hostels = new JSONArray();
+        hostels.put(getLocation("Amber", 10.768198, 78.813603));
+        hostels.put(getLocation("Garnet", 10.763237, 78.811625));
+        hostels.put(getLocation("Zircon", 10.766765, 78.817509));
+        hostels.put(getLocation("Diamond", 10.763740, 78.814451));
+
+        JSONArray departments = new JSONArray();
+        departments.put(getLocation("Computer Science", 10.760196, 78.818233));
+        departments.put(getLocation("Civil", 10.759146, 78.817208));
+
+        JSONArray offices = new JSONArray();
+        offices.put(getLocation("Administrative office", 10.759003, 78.813133));
+        offices.put(getLocation("Hostel office", 10.762462, 78.814221));
+
+        JSONArray shops = new JSONArray();
+        shops.put(getLocation("Restaurant", 10.761485, 78.818890));
+        shops.put(getLocation("Fresh Juice Shop", 10.761559, 78.818654));
+
+        JSONObject categories = new JSONObject();
+        categories.put("Mess", messes);
+        categories.put("Hostels", hostels);
+        categories.put("Departments", departments);
+        categories.put("Offices", offices);
+        categories.put("Shops", shops);
+
+        return categories;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
         if (mGoogleApiClient == null) {
             mGoogleApiClient = new GoogleApiClient.Builder(this)
                     .addConnectionCallbacks(this)
@@ -88,72 +113,47 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
                     .addApi(LocationServices.API)
                     .build();
         }
-        MyAsyncTask task =new MyAsyncTask();
+
         setUpMapIfNeeded();
-        Bundle bundle = getIntent().getExtras();
-        String message = bundle.getString("pos");
-        task.execute("https://spider.nitt.edu/lateral/appdev/coordinates?category="+message);
         mMap.setMyLocationEnabled(true);
-        mMap.getUiSettings().setZoomControlsEnabled( true );
+        mMap.getUiSettings().setZoomControlsEnabled(true);
         android.support.v7.app.ActionBar mActionBar = getSupportActionBar();
         mActionBar.setDisplayShowHomeEnabled(true);
         mActionBar.setDisplayShowTitleEnabled(false);
         LayoutInflater mInflater = LayoutInflater.from(this);
-           View mCustomView = mInflater.inflate(R.layout.app_bar, null);
-      final EditText  mTitleTextView = (EditText) mCustomView.findViewById(R.id.editText);
+        View mCustomView = mInflater.inflate(R.layout.app_bar, null);
+        mActionBar.setCustomView(mCustomView);
+        mActionBar.setDisplayShowCustomEnabled(true);
+        final EditText mTitleTextView = mCustomView.findViewById(R.id.editText);
 
         mTitleTextView.setOnKeyListener(new View.OnKeyListener() {
-
             public boolean onKey(View v, int keyCode, KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                    switch (keyCode) {
-
-                        case KeyEvent.KEYCODE_ENTER:
-                            int s = 1;
-                            String ur = mTitleTextView.getText().toString();
-                            for (int i = 0; i < cat.size(); i++) {
-                                if (cat.get(i).equals(ur))
-
-                                {
-                                    LatLng latLng = new LatLng(lat.get(i), lon.get(i));
-                                    CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 18);
-                                    mMap.animateCamera(cameraUpdate);
-                                    s = 0;
-
-                                }
-
-
+                    if (keyCode == KeyEvent.KEYCODE_ENTER) {
+                        int s = 1;
+                        String ur = mTitleTextView.getText().toString();
+                        for (int i = 0; i < cat.size(); i++) {
+                            if (cat.get(i).equals(ur)) {
+                                LatLng latLng = new LatLng(lat.get(i), lon.get(i));
+                                CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 18);
+                                mMap.animateCamera(cameraUpdate);
+                                s = 0;
                             }
-                            if (s == 1) {
-                                Toast toast = Toast.makeText(getApplicationContext(), ur + " not found ", Toast.LENGTH_SHORT);
-                                toast.show();
-                            }
-                            return true;
-                        default:
-                            break;
+                        }
+                        if (s == 1) {
+                            Toast toast = Toast.makeText(getApplicationContext(), ur + " not found ", Toast.LENGTH_SHORT);
+                            toast.show();
+                        }
+                        return true;
                     }
                 }
                 return false;
             }
         });
 
-
-
-
-
-
-        mActionBar.setCustomView(mCustomView);
-        mActionBar.setDisplayShowCustomEnabled(true);
-
-       mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener()
-        {
-
+        mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker arg0) {
-                if(t==1)
-                {line.remove();}
-                t=1;
-
                 final Toast toast = Toast.makeText(getApplicationContext(), arg0.getTitle(), Toast.LENGTH_SHORT);
                 toast.show();
                 Handler handler = new Handler();
@@ -163,19 +163,57 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
                         toast.cancel();
                     }
                 }, 1500);
-                LatLng origin= new LatLng(arg0.getPosition().latitude,arg0.getPosition().longitude);
-                LatLng dest=new LatLng(latn,lonn);
-                String url = getDirectionsUrl(origin, dest);
-                DownloadTask downloadTask = new DownloadTask();
-                downloadTask.execute(url);
 
+               /*  if (isDirectionLinePresent) {
+                    line.remove();
+                }
+                isDirectionLinePresent = true;
+                LatLng origin= new LatLng(arg0.getPosition().latitude,arg0.getPosition().longitude);
+                LatLng dest=new LatLng(currentLocationLatitude,currentLocationLongitude);
+                String url = getDirectionsUrl(origin, dest);
+                fetchRoutesTask routesTask = new fetchRoutesTask();
+                routesTask.execute(url);*/
 
                 return true;
             }
 
         });
 
+        //getCategoryMapAsyncTask task =new getCategoryMapAsyncTask();
+        //task.execute("https://spider.nitt.edu/lateral/appdev/coordinates?category="+message);
+        Bundle bundle = getIntent().getExtras();
+        String category = bundle.getString("category");
+        JSONArray locations = new JSONArray();
+        try {
+            locations = getCategoryMap().getJSONArray(category);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        for (int locationCount = 0; locationCount < locations.length(); locationCount++) {
+            JSONObject locationObject = new JSONObject();
+            try {
+                locationObject = locations.getJSONObject(locationCount);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+            String locationName = locationObject.optString("name").toString();
+            float latitude = Float.parseFloat(locationObject.optString("latitude"));
+            float longitude = Float.parseFloat(locationObject.optString("longitude"));
+            latitudeSum += latitude;
+            longitudeSum += longitude;
+            mMap.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)).title(locationName));
+            cat.add(locationName);
+            lat.add(latitude);
+            lon.add(longitude);
+        }
+        longitudeSum = longitudeSum / locations.length();
+        latitudeSum = latitudeSum / locations.length();
+        LatLng latLng = new LatLng(latitudeSum, longitudeSum);
+        CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 15);
+        mMap.animateCamera(cameraUpdate);
     }
+
     protected void onStart() {
         mGoogleApiClient.connect();
         super.onStart();
@@ -188,11 +226,11 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
 
     @Override
     public void onConnected(Bundle bundle) {
-     Location   mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
+        Location mLastLocation = LocationServices.FusedLocationApi.getLastLocation(
                 mGoogleApiClient);
         if (mLastLocation != null) {
-            latn=mLastLocation.getLatitude();
-            lonn=mLastLocation.getLongitude();
+            currentLocationLatitude = mLastLocation.getLatitude();
+            currentLocationLongitude = mLastLocation.getLongitude();
         }
     }
 
@@ -223,36 +261,63 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
             }
         }
     }
-    class MyAsyncTask extends AsyncTask<String, String, Void> {
+
+    private String getDirectionsUrl(LatLng origin, LatLng dest) {
+        String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
+        String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+        String sensor = "sensor=false";
+        String parameters = str_origin + "&" + str_dest + "&" + sensor;
+        String output = "json";
+        String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters;
+        return url;
+    }
+
+    private String downloadUrl(String strUrl) throws IOException {
+        String data = "";
+        InputStream iStream = null;
+        HttpURLConnection urlConnection = null;
+        try {
+            URL url = new URL(strUrl);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            urlConnection.connect();
+            iStream = urlConnection.getInputStream();
+            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+            StringBuffer sb = new StringBuffer();
+            String line = "";
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            data = sb.toString();
+            br.close();
+
+        } catch (Exception e) {
+        } finally {
+            iStream.close();
+            urlConnection.disconnect();
+        }
+        return data;
+    }
+
+    class getCategoryMapAsyncTask extends AsyncTask<String, String, Void> {
 
         private ProgressDialog progressDialog = new ProgressDialog(MapsActivity.this);
         InputStream inputStream = null;
         String result = "";
 
         protected void onPreExecute() {
-         //   progressDialog.setMessage("Downloading your data...");
-           // progressDialog.show();
+            progressDialog.setMessage("Downloading location co-ordinates...");
+            progressDialog.show();
 
         }
 
         @Override
         protected Void doInBackground(String... params) {
-
-
-
             try {
-
-                DefaultHttpClient httpClient = new DefaultHttpClient();
-                HttpGet httpPost = new HttpGet(params[0]);
-                HttpResponse httpResponse = httpClient.execute(httpPost);
-                HttpEntity httpEntity = httpResponse.getEntity();
-                inputStream = httpEntity.getContent();
+                URL urlObj = new URL(params[0]);
+                HttpURLConnection urlConnection = (HttpURLConnection) urlObj.openConnection();
+                inputStream = urlConnection.getInputStream();
             } catch (UnsupportedEncodingException e1) {
-
                 e1.printStackTrace();
-            } catch (ClientProtocolException e2) {
-                Log.e("ClientProtocolException", e2.toString());
-                e2.printStackTrace();
             } catch (IllegalStateException e3) {
                 Log.e("IllegalStateException", e3.toString());
                 e3.printStackTrace();
@@ -276,208 +341,122 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
 
             } catch (Exception e) {
 
-            }  return null;
+            }
+            return null;
         }
+
         protected void onPostExecute(Void v) {
 
 
-
-                try {
-                    JSONArray st = new JSONArray(result);
-
-
-                    for (int i = 0; i < st.length(); i++) {
-                        JSONObject jsonObject = st.getJSONObject(i);
-
-                      name = jsonObject.optString("name").toString();
-                        float latitude = Float.parseFloat(jsonObject.optString("latitude").toString());
-                        float longitude = Float.parseFloat(jsonObject.optString("longitude").toString());
-                        suml+=latitude;
-                        sumr+=longitude;
-                        mMap.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)).title(name));
-                        cat.add(name);
-                        lat.add(latitude);
-                        lon.add(longitude);
-
+            try {
+                JSONArray locations = new JSONArray(result);
+                for (int locationCount = 0; locationCount < locations.length(); locationCount++) {
+                    JSONObject locationObject = new JSONObject();
+                    try {
+                        locationObject = locations.getJSONObject(locationCount);
+                    } catch (JSONException e) {
+                        e.printStackTrace();
                     }
-                    sumr=sumr/st.length();
-                    suml=suml/st.length();
-
-                    LatLng latLng = new LatLng(suml, sumr);
-                    CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 15);
-                    mMap.animateCamera(cameraUpdate);
-                } catch (JSONException e1) {
-                    e1.printStackTrace();
+                    String locationName = locationObject.optString("name").toString();
+                    float latitude = Float.parseFloat(locationObject.optString("latitude"));
+                    float longitude = Float.parseFloat(locationObject.optString("longitude"));
+                    latitudeSum += latitude;
+                    longitudeSum += longitude;
+                    mMap.addMarker(new MarkerOptions().position(new LatLng(latitude, longitude)).title(locationName));
+                    cat.add(locationName);
+                    lat.add(latitude);
+                    lon.add(longitude);
                 }
-
-
-
-
-
-        } }
-    private String getDirectionsUrl(LatLng origin,LatLng dest){
-
-        // Origin of route
-        String str_origin = "origin="+origin.latitude+","+origin.longitude;
-
-        // Destination of route
-        String str_dest = "destination="+dest.latitude+","+dest.longitude;
-
-        // Sensor enabled
-        String sensor = "sensor=false";
-
-        // Building the parameters to the web service
-        String parameters = str_origin+"&"+str_dest+"&"+sensor;
-
-        // Output format
-        String output = "json";
-
-        // Building the url to the web service
-        String url = "https://maps.googleapis.com/maps/api/directions/"+output+"?"+parameters;
-
-        return url;
-    }
-    /** A method to download json data from url */
-    private String downloadUrl(String strUrl) throws IOException{
-        String data = "";
-        InputStream iStream = null;
-        HttpURLConnection urlConnection = null;
-        try{
-            URL url = new URL(strUrl);
-
-            // Creating an http connection to communicate with url
-            urlConnection = (HttpURLConnection) url.openConnection();
-
-            // Connecting to url
-            urlConnection.connect();
-
-            // Reading data from url
-            iStream = urlConnection.getInputStream();
-
-            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
-
-            StringBuffer sb = new StringBuffer();
-
-            String line = "";
-            while( ( line = br.readLine()) != null){
-                sb.append(line);
+                longitudeSum = longitudeSum / locations.length();
+                latitudeSum = latitudeSum / locations.length();
+                LatLng latLng = new LatLng(latitudeSum, longitudeSum);
+                CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(latLng, 15);
+                mMap.animateCamera(cameraUpdate);
+            } catch (JSONException e1) {
+                e1.printStackTrace();
             }
 
-            data = sb.toString();
 
-            br.close();
-
-        }catch(Exception e){
-           // Log.d("Exception while downloading url", e.toString());
-        }finally{
-            iStream.close();
-            urlConnection.disconnect();
         }
-        return data;
     }
 
-    // Fetches data from url passed
-    private class DownloadTask extends AsyncTask<String, Void, String>{
+    private class fetchRoutesTask extends AsyncTask<String, Void, String> {
         private ProgressDialog progressDialog = new ProgressDialog(MapsActivity.this);
 
-        // Downloading data in non-ui thread
         protected void onPreExecute() {
             progressDialog.setMessage("Fetching routes...");
             progressDialog.show();
 
         }
+
         @Override
         protected String doInBackground(String... url) {
-
-            // For storing data from web service
             String data = "";
 
-            try{
-                // Fetching the data from web service
+            try {
                 data = downloadUrl(url[0]);
-            }catch(Exception e){
-                Log.d("Background Task",e.toString());
+            } catch (Exception e) {
+                Log.d("Background Task", e.toString());
             }
             return data;
         }
 
-        // Executes in UI thread, after the execution of
-        // doInBackground()
         @Override
         protected void onPostExecute(String result) {
             super.onPostExecute(result);
             progressDialog.dismiss();
-
             ParserTask parserTask = new ParserTask();
-
-            // Invokes the thread for parsing the JSON data
             parserTask.execute(result);
         }
     }
 
-    /** A class to parse the Google Places in JSON format */
-    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String,String>>> >{
+    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
 
-        // Parsing the data in non-ui thread
         @Override
         protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
 
             JSONObject jObject;
             List<List<HashMap<String, String>>> routes = null;
 
-            try{
+            try {
                 jObject = new JSONObject(jsonData[0]);
                 DirectionsJSONParser parser = new DirectionsJSONParser();
-
-                // Starts parsing data
                 routes = parser.parse(jObject);
-            }catch(Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
             return routes;
         }
 
-        // Executes in UI thread, after the parsing process
         @Override
         protected void onPostExecute(List<List<HashMap<String, String>>> result) {
             ArrayList<LatLng> points = null;
             PolylineOptions lineOptions = null;
             MarkerOptions markerOptions = new MarkerOptions();
 
-            // Traversing through all the routes
-            for(int i=0;i<result.size();i++){
+            for (int i = 0; i < result.size(); i++) {
                 points = new ArrayList<LatLng>();
                 lineOptions = new PolylineOptions();
-
-                // Fetching i-th route
                 List<HashMap<String, String>> path = result.get(i);
-
-                // Fetching all the points in i-th route
-                for(int j=0;j<path.size();j++){
-                    HashMap<String,String> point = path.get(j);
-
+                for (int j = 0; j < path.size(); j++) {
+                    HashMap<String, String> point = path.get(j);
                     double lat = Double.parseDouble(point.get("lat"));
                     double lng = Double.parseDouble(point.get("lng"));
                     LatLng position = new LatLng(lat, lng);
 
                     points.add(position);
                 }
-
-                // Adding all the points in the route to LineOptions
                 lineOptions.addAll(points);
                 lineOptions.width(10);
                 lineOptions.color(Color.RED);
             }
-
-            // Drawing polyline in the Google Map for the i-th route
-          line=   mMap.addPolyline(lineOptions);
+            line = mMap.addPolyline(lineOptions);
         }
     }
+
     public class DirectionsJSONParser {
 
-        /**
-         * Receives a JSONObject and returns a list of lists containing latitude and longitude
-         */
+
         public List<List<HashMap<String, String>>> parse(JSONObject jObject) {
 
             List<List<HashMap<String, String>>> routes = new ArrayList<List<HashMap<String, String>>>();
@@ -486,25 +465,16 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
             JSONArray jSteps = null;
 
             try {
-
                 jRoutes = jObject.getJSONArray("routes");
-
-                /** Traversing all routes */
                 for (int i = 0; i < jRoutes.length(); i++) {
                     jLegs = ((JSONObject) jRoutes.get(i)).getJSONArray("legs");
                     List path = new ArrayList<HashMap<String, String>>();
-
-                    /** Traversing all legs */
                     for (int j = 0; j < jLegs.length(); j++) {
                         jSteps = ((JSONObject) jLegs.get(j)).getJSONArray("steps");
-
-                        /** Traversing all steps */
                         for (int k = 0; k < jSteps.length(); k++) {
                             String polyline = "";
                             polyline = (String) ((JSONObject) ((JSONObject) jSteps.get(k)).get("polyline")).get("points");
                             List<LatLng> list = decodePoly(polyline);
-
-                            /** Traversing all points */
                             for (int l = 0; l < list.size(); l++) {
                                 HashMap<String, String> hm = new HashMap<String, String>();
                                 hm.put("lat", Double.toString(((LatLng) list.get(l)).latitude));
@@ -523,12 +493,11 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
 
             return routes;
         }
-        private List<LatLng> decodePoly(String encoded) {
 
+        private List<LatLng> decodePoly(String encoded) {
             List<LatLng> poly = new ArrayList<LatLng>();
             int index = 0, len = encoded.length();
             int lat = 0, lng = 0;
-
             while (index < len) {
                 int b, shift = 0, result = 0;
                 do {
@@ -538,7 +507,6 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
                 } while (b >= 0x20);
                 int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
                 lat += dlat;
-
                 shift = 0;
                 result = 0;
                 do {
@@ -553,13 +521,9 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
                         (((double) lng / 1E5)));
                 poly.add(p);
             }
-
             return poly;
         }
     }
-
-
-
 
 
     @Override
@@ -568,17 +532,15 @@ public class MapsActivity extends AppCompatActivity implements GoogleApiClient.C
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
     }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
-
         int id = item.getItemId();
-
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_settings) {
-
             return true;
         }
         return super.onOptionsItemSelected(item);
